@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreetRiders Hub</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+
+        #show-map-btn {
+            margin-top: 20px;
+        }
+
+        #map-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        #map {
+            width: 100%;
+            height: 500px;
+        }
+
+        #spot-menu {
+            margin-top: 20px;
+        }
+
+        #spots-container {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .spot-card {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            margin: 10px;
+            padding: 10px;
+            width: 200px;
+        }
+
+        .spot-card img {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+    <!-- Leaflet.js CSS-Datei einbinden -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+</head>
+<body>
+    <h1>StreetRiders Hub</h1>
+    <button id="show-map-btn" onclick="showMap()">Karte Anzeigen</button>
+    <button id="toggle-view-btn" style="display:none;" onclick="toggleView()">Wechsel zu Satellitenansicht</button>
+    <div id="map-container">
+        <div id="map"></div>
+        <div id="spot-menu" style="display:none;">
+            <h2>Neuen Spot erstellen</h2>
+            <input type="text" id="spot-title" placeholder="Titel">
+            <input type="text" id="spot-type" placeholder="Art des Spots">
+            <input type="file" id="spot-image" accept="image/*">
+            <button onclick="saveSpot()">Speichern</button>
+            <button onclick="cancelSpot()">Abbrechen</button>
+        </div>
+    </div>
+    <div id="spots-container"></div>
+    
+    <!-- Leaflet.js JavaScript-Datei einbinden -->
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        let map;
+        let spots = [];
+        let longPressTimeout;
+        let clickCount = 0;
+        let isSatelliteView = false;
+
+        function initMap() {
+            map = L.map('map').setView([47.6062, 13.0827], 8);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            map.on('mousedown', function (e) {
+                longPressTimeout = setTimeout(function () {
+                    showSpotMenu(e);
+                }, 2000); // 2 Sekunden langer Druck
+            });
+
+            map.on('mouseup', function (e) {
+                clearTimeout(longPressTimeout);
+                clickCount++;
+                if (clickCount === 3) {
+                    showSpotMenu(e);
+                    clickCount = 0;
+                }
+            });
+
+            map.on('mouseleave', function (e) {
+                clearTimeout(longPressTimeout);
+            });
+        }
+
+        function showSpotMenu(e) {
+            const latLng = e.latlng;
+            document.getElementById('spot-menu').dataset.latLng = JSON.stringify(latLng);
+            document.getElementById('spot-menu').style.display = 'block';
+        }
+
+        function showMap() {
+            document.getElementById('map-container').style.display = 'block';
+            document.getElementById('toggle-view-btn').style.display = 'block';
+            if (!map) {
+                initMap();
+            }
+        }
+
+        function toggleView() {
+            if (isSatelliteView) {
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }).addTo(map);
+                document.getElementById('toggle-view-btn').textContent = 'Wechsel zu Satellitenansicht';
+            } else {
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }).remove(map);
+                L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+                    attribution: 'Map data: &copy; <a href="https://www.opentopomap.org">OpenTopoMap</a>'
+                }).addTo(map);
+                document.getElementById('toggle-view-btn').textContent = 'Wechsel zu Kartenansicht';
+            }
+            isSatelliteView = !isSatelliteView;
+        }
+
+        function saveSpot() {
+            const title = document.getElementById('spot-title').value;
+            const type = document.getElementById('spot-type').value;
+            const imageFile = document.getElementById('spot-image').files[0];
+
+            if (title && type && imageFile) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const imgSrc = e.target.result;
+
+                    const latLng = JSON.parse(document.getElementById('spot-menu').dataset.latLng);
+                    const marker = L.marker(latLng).addTo(map)
+                        .bindPopup(`<b>${title}</b><br>${type}`).openPopup();
+
+                    spots.push({ title, type, imgSrc, latLng });
+
+                    updateSpots();
+                    clearForm();
+                };
+                reader.readAsDataURL(imageFile);
+            } else {
+                alert('Bitte füllen Sie alle Felder aus und laden Sie ein Bild hoch.');
+            }
+        }
+
+        function updateSpots() {
+            const container = document.getElementById('spots-container');
+            container.innerHTML = '';
+
+            spots.forEach(spot => {
+                const card = document.createElement('div');
+                card.className = 'spot-card';
+                card.innerHTML = `<h3>${spot.title}</h3><p>${spot.type}</p><img src="${spot.imgSrc}" alt="${spot.title}">`;
+                container.appendChild(card);
+            });
+        }
+
+        function clearForm() {
+            document.getElementById('spot-title').value = '';
+            document.getElementById('spot-type').value = '';
+            document.getElementById('spot-image').value = '';
+            document.getElementById('spot-menu').style.display = 'none';
+        }
+
+        function cancelSpot() {
+            clearForm();
+        }
+    </script>
+</body>
+</html>
